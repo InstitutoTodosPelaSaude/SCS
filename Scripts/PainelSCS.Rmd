@@ -1,0 +1,392 @@
+---
+title: "Painel de monitoramento - São Caetano do Sul"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    social: menu
+    theme: cosmo
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(pyramid)
+library(ggplot2)
+library(bslib)
+library(stringr)
+library(wordcloud2)
+library(sf)
+library(tidytable)
+library(knitr)
+#library(prophet)
+library(dygraphs)
+library(tidytext)
+library(stringi)
+#Teste icloud
+```
+```{r data, include=FALSE}
+load("../Data/SCS.RData")
+load("../Data/bairrosSCS.RData")
+load("../Data/stopwords.RData")
+load("../Data/cid10.RData")
+```
+Dados gerais
+=======================================================================
+
+Column {data-width=190}
+-----------------------------------------------------------------------
+
+```{r picture, echo = F, fig.cap = "http://itps.org.br", out.width = "200px"}
+knitr::include_graphics("../itps.png")
+```
+<br>
+
+### Atendimentos Hospital - Total 2022
+```{r}
+AtendHosp <- SCS %>%
+  select.(dt_atendimento, tx_unidade_organizacional) %>% 
+  filter.(year(dt_atendimento)==2022) %>%
+  summarise.(n = n(), .by = tx_unidade_organizacional) %>%
+  filter.(tx_unidade_organizacional == "HMEAS") %>%
+  select.(n)
+valueBox(value = AtendHosp, icon = 'fa-briefcase-medical', color = "#ff6555")
+```
+
+### Atendimentos Hospital - Média diária 2022
+```{r}
+MedAtendHosp <- SCS %>%
+  select.(dt_atendimento, tx_unidade_organizacional) %>% 
+  filter.(year(dt_atendimento)==2022) %>%
+  mutate.(day = day(dt_atendimento)) %>% 
+  summarise.(n = n(), .by = c("tx_unidade_organizacional", "day")) %>%
+  filter.(tx_unidade_organizacional=="HMEAS") %>%
+  summarise.(AtendMed = mean(n)) %>%
+  round()
+valueBox(value = MedAtendHosp, icon = 'fa-briefcase-medical', color = "#ff6555")
+```
+
+### Atendimentos UPA - Total 2022
+```{r}
+AtendUPA <- SCS %>%
+  select.(dt_atendimento, tx_unidade_organizacional) %>% 
+  filter.(year(dt_atendimento)==2022) %>%
+  summarise.(n = n(), .by = tx_unidade_organizacional) %>%
+  filter.(tx_unidade_organizacional == "UPA") %>%
+  select.(n)
+valueBox(AtendUPA, icon = 'fa-briefcase-medical', color = "#4d77bb")
+```
+
+### Atendimentos UPA - Média diária 2022
+```{r}
+MedAtendHosp <- SCS %>%
+  select.(dt_atendimento, tx_unidade_organizacional) %>% 
+  filter.(year(dt_atendimento)==2022) %>%
+  mutate.(day = day(dt_atendimento)) %>% 
+  summarise.(n = n(), .by = c("tx_unidade_organizacional", "day")) %>%
+  filter.(tx_unidade_organizacional=="UPA") %>%
+  summarise.(AtendMed = mean(n)) %>%
+  round()
+valueBox(value = MedAtendHosp, icon = 'fa-briefcase-medical', color = "#4d77bb")
+```
+
+### Casos de febre - Total 2022
+```{r}
+SCSFebre <- SCS %>% 
+  filter.(year(dt_atendimento) == 2022) %>% 
+  filter.(febre == 1) %>% 
+  summarise.(febres = n(), .by = febre) %>% 
+  select.(febres)
+valueBox(value = SCSFebre, icon = 'fa-briefcase-medical', color = "#7cb343")
+```
+
+### Casos de febre - Média diária 2022
+```{r}
+SCSFebMed <- SCS %>%
+  select.(dt_atendimento, febre) %>% 
+  filter.(year(dt_atendimento)==2022) %>%
+  filter.(febre == 1) %>%
+  mutate.(day = day(dt_atendimento)) %>% 
+  summarise.(n = n(), .by = day) %>%
+  summarise.(AtendMed = mean(n)) %>%
+  round()
+valueBox(value = SCSFebMed, icon = 'fa-briefcase-medical', color = "#7cb343")
+```
+
+Column
+-----------------------------------------------------------------------
+
+### Dist. de atendimentos por sexo e idade
+```{r}
+SCSagem <- SCS %>% 
+  filter.(year(dt_atendimento)==2022) %>%
+  filter.(cs_sexo == "M") %>% 
+  summarise.(Masculino = sum(febre == 1), .by = groupage)
+SCSagef <- SCS %>% 
+  filter.(year(dt_atendimento)==2022) %>%
+  filter.(cs_sexo == "F") %>%
+  summarise.(Feminino = sum(febre == 1), .by = groupage)
+SCSage <- merge(SCSagem, SCSagef, by = "groupage")
+SCSage <- SCSage %>% 
+  arrange.(SCSage$groupage) %>% 
+  relocate.(groupage, .after = Feminino)
+SCSage$groupage <- as.character(SCSage$groupage)
+SCSagePerc <- SCSage %>% 
+  mutate.(popt = Masculino + Feminino) %>% 
+  mutate.(PopPerc = popt / sum(popt) * 100) %>% 
+  mutate.(PopPercM = Masculino / sum(popt) * 100) %>%
+  mutate.(PopPercF = Feminino / sum(popt) * 100) %>% 
+  select.(PopPercM, PopPercF, groupage)
+renderPlot({
+pyramid(SCSagePerc, Clab = "Faixa etária", Llab = "Masculino (%)", Rlab = "Feminino (%)", 
+        Lcol = "#4d77bb", Rcol = "#ff6555",
+        main = "Pirâmide etária de atendimentos - S. Caetano do Sul (2022)") 
+  })
+```
+
+### Dist. de atendimentos no tempo
+```{r}
+sem_atual <- epiweek(today())
+SCSTemp <- SCS %>% 
+  filter.(year(dt_atendimento) == 2022) %>% 
+  #Alterar o valor subtraído da semana quando chegar o banco total
+  filter.(week(dt_atendimento) <= sem_atual-4) %>%
+  summarise.(n = n(), .by = c(sem_atend, tx_unidade_organizacional)) %>%
+  spread(tx_unidade_organizacional, n) %>% 
+  #filter.(sem_atend < (sem_atual-5)) %>% 
+  arrange.(sem_atend)
+colunas <- c(Hospital = "#ff6555", UPA = "#4d77bb")
+renderPlot({
+ggplot(SCSTemp) +
+  geom_line(aes(x=sem_atend, y = HMEAS, colour="Hospital"), size = 3) +
+  geom_line(aes(x=sem_atend, y = UPA, colour="UPA"), size = 3) +
+  scale_colour_manual(values =  colunas) +
+  theme(legend.position = c(0.95, 0.15),
+        legend.justification = c("right", "top")) +
+  theme_classic() +
+  labs(
+    title = "Atendimentos por semana",
+    subtitle = "(2022)",
+    caption = "Dados do MV - Prontuário",
+    tag = "",
+    x = "Tempo (semana epidemiológica)",
+    y = "Número de atendimentos (N)",
+    colour = "Legenda")
+})
+#salvar subsets em csv
+```
+
+Nuvem de palavras
+=======================================================================
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+meses <- sort(c(unique(month(SCS$dt_atendimento))), decreasing = F)
+selectInput("mes", "Selecione o mês", choices = meses, selected = 1)
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Termos mais comuns na queixa quando FEBRE é mencionada
+
+```{r}
+#Cria o dataset para a nuvem de palavras associadas aos casos com menção à febre
+Nuvem <- reactive({
+  SCS %>% 
+  filter.(year(dt_atendimento) == 2022) %>% 
+  filter(month(dt_atendimento) == input$mes) %>% 
+  filter.(!is.na(queixa)) %>% 
+  filter.(febre == 1) %>% 
+  select.(queixa) %>% 
+  #Remove caracteres especiais de palavras
+  mutate.(queixa = stri_trans_general(queixa, "Latin-ASCII")) %>%
+  #Remove espaços em branco antes e depois das palavras
+  mutate.(queixa = trimws(queixa)) %>%
+  #Tokeniza as palavras
+  unnest_tokens("Palavras", "queixa") %>% 
+  #Remove stop words das palavras
+  anti_join.(stopwords, by = c("Palavras" = "palavras")) %>% 
+  #Substitui por missing as stopwords
+  mutate.(Palavras = str_replace_all(Palavras, '[[:digit:]]', '')) %>% 
+  #Substitui por missing as pontuações
+  mutate.(Palavras = str_replace_all(Palavras, '[[:punct:]]', '')) %>% 
+  #Substitui por missing o termo paciente e assim por diante
+  mutate.(Palavras = str_replace_all(Palavras, 'paciente', '')) %>% 
+  mutate.(Palavras = str_replace_all(Palavras, 'relata', '')) %>% 
+  mutate.(Palavras = str_replace_all(Palavras, 'refere', '')) %>% 
+  mutate.(Palavras = str_replace_all(Palavras, 'sintomas', '')) %>% 
+  mutate.(Palavras = str_replace_all(Palavras, 'ha', '')) %>% 
+  #Substitui por missing as palavras dia ou dias
+  mutate.(Palavras = str_replace_all(Palavras, '^dias?$', '')) %>% 
+  mutate.(Palavras = str_replace_all(Palavras, 'fez|uso', '')) %>% 
+  mutate.(Palavras = str_replace_all(Palavras, 'ontem|hoje|inicio', '')) %>% 
+  ##Substitui por missing palavras com dois caracteres apenas
+  mutate.(Palavras = str_replace_all(Palavras, '^[a-z]$', '')) %>% 
+  #mutate.(Palavras = str_replace_all(Palavras, '^[a-z]$', '')) %>% 
+  mutate.(Palavras = str_replace_all(Palavras, 'febre', '')) %>% 
+  #Remove todos os registros em branco
+  filter.(Palavras != "") %>% 
+  #Conta as palavras
+  count(Palavras, sort = TRUE) %>% 
+  #Cria contagens únicas das palavras por palavras únicas
+  mutate.(Palavras = factor(Palavras, levels = rev(unique(Palavras)))) %>% 
+  ungroup()
+})
+#Plota a nuvem de palavras
+renderWordcloud2(
+PlotNuvem <- wordcloud2(data = Nuvem(), size = 2, minSize = 0, gridSize = 0, fontFamily = "Segoe UI", 
+          fontWeight = "bold", color = "random-dark", backgroundColor = "white", 
+          minRotation = -pi/6, maxRotation = -pi/6, shuffle = TRUE, 
+          rotateRatio = 0.5, shape = "pentagon", ellipticity = 0.65, 
+          widgetsize = NULL, figPath = NULL, hoverFunction = NULL))
+```
+
+Febre - Dist. espacial
+=======================================================================
+
+### Taxa de febre por bairro de S. Caetano do Sul
+```{r}
+SCSbairro <- SCS %>%
+  filter.(name_muni=="SAO CAETANO DO SUL") %>%
+  summarise.(febre = sum(febre == 1, pop = max(populacao_total)), .by = c("code_neighborhood", "populacao_total")) %>%
+  arrange.(code_neighborhood) %>%
+  mutate.(popsem = populacao_total/sem_atual) %>% 
+  mutate.(TaxaFebre = (febre/populacao_total) * (1000)) %>% 
+  inner_join.(bairrosSCS, .by = "code_neighborhood") %>% 
+  st_as_sf()
+renderPlot({
+  ggplot(data = SCSbairro) +
+  geom_sf(aes(fill = TaxaFebre ), size = .15) +
+  scale_fill_gradient(low = "light blue", high = "dark blue", name = "Taxa de febre (por 1.000 hab.)") +
+  geom_sf_text(aes(label = name_neighborhood), colour = "white") +
+  xlab("") +  ylab("") +
+  theme_classic()
+})
+```
+
+Febre - Dist. temporal
+=======================================================================
+
+### Canal endêmico - febres em S. Caetano do Sul
+```{r}
+sem_atual <- epiweek(today())
+SCSfebhist <- SCS %>% 
+  filter.(year(dt_atendimento) == 2022) %>% 
+  filter.(sem_atend<sem_atual) %>% 
+  summarise.(feb = sum(febre == 1), .by = sem_atend) %>%
+  arrange.(sem_atend) %>%
+  sapply(function(x) {
+    replace(x, is.na(x) | is.infinite(x), 0)
+  })
+SCSfebhist <- as.data.frame(SCSfebhist)
+cols <- c(Media = "#4D77BB", Febre2022 = "#FF0066")
+renderPlot({
+  ggplot(SCSfebhist) +
+  #geom_ribbon(aes(x = sem_atend, ymin = LowB,ymax=HigB), fill="#4D77BB", alpha=0.5) +
+  #geom_line(aes(x=sem_atend, y = FebreMean, colour="Media"), lwd=1.5) +
+  geom_line(aes(x=sem_atend, y = feb, colour="Febre2022"), lwd=1.5) +
+  scale_colour_manual(values =  cols) +
+  theme(legend.position = c(0.95, 0.15),
+        legend.justification = c("right", "top")) +
+  theme_classic() +
+  labs(
+    title = "Corredor endêmico de queixas (Febre) por semana epidemiológica",
+    subtitle = year(Sys.Date()),
+    caption = "Dados do sistema de prontuário eletrônico SCS",
+    x = "Tempo (semana epidemiológica)",
+    y = "Número de casos de febre (N)",
+    colour = "Legenda")
+})
+```
+### Forecasting - febres em S. Caetano do Sul
+
+```{r}
+
+# SCSTS <- SCS %>% 
+#   summarise.(febre = sum(febre == 1), .by =  dt_atendimento) %>% 
+#   arrange.(dt_atendimento) %>% 
+#   rename.(ds = dt_atendimento) %>% 
+#   rename.(y = febre)
+# 
+# SCSm <- prophet(SCSTS)
+# SCSFuturoFebre <- make_future_dataframe(SCSm, periods = 28)
+# SCSForeFebre <- predict(SCSm, SCSFuturoFebre)
+# #plot(SCSm, SCSForeFebre)
+# renderDygraph({
+# SCSTimePlot <- dyplot.prophet(SCSm, SCSForeFebre, main = "Predição de casos de febre por semana")
+# })
+```
+
+Febre - CID10 Top10
+=======================================================================
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+SCS <- SCS %>% 
+  filter.(week(dt_atendimento) <= sem_atual)
+semanas <- sort(c(unique(week(SCS$dt_atendimento))), decreasing = F)
+selectInput("semana", "Selecione a semana", 
+    choices = semanas, selected = 1)
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Nuvem de CID10 S. Caetano do Sul
+
+```{r}
+CIDTop <- reactive({
+  SCS %>%
+  filter.(name_muni=="SAO CAETANO DO SUL") %>%
+  filter.(febre == 1) %>% 
+  filter.(week(dt_atendimento) == input$semana) %>% 
+  select.(tx_codigo, sem_atend) %>% 
+  filter.(!is.na(tx_codigo)) %>% 
+  arrange.(sem_atend) %>% 
+  #Conta as palavras
+  count(tx_codigo, sort = TRUE) %>% 
+  #Cria contagens únicas das palavras por palavras únicas
+  mutate.(tx_codigo = factor(tx_codigo, levels = rev(unique(tx_codigo)))) %>% 
+  ungroup()
+})
+#Plota a nuvem de palavras
+renderWordcloud2(
+PlotNuvem <- wordcloud2(data = CIDTop(), size = 1, minSize = 0, gridSize = 0, fontFamily = "Segoe UI", 
+          fontWeight = "bold", color = "random-dark", backgroundColor = "white", 
+          minRotation = -pi/6, maxRotation = pi/6, shuffle = TRUE, 
+          rotateRatio = 0.9, shape = "circle", ellipticity = 0.65, 
+          widgetsize = NULL, figPath = NULL, hoverFunction = NULL)
+)
+```
+
+### CID10 S. Caetano do Sul - Top 10
+```{r, echo = FALSE}
+CIDTopTab <- reactive({
+  SCS %>%
+  filter.(name_muni=="SAO CAETANO DO SUL") %>%
+  filter.(febre == 1) %>% 
+  filter.(week(dt_atendimento) == input$semana) %>% 
+  select.(tx_codigo, sem_atend) %>% 
+  filter.(!is.na(tx_codigo)) %>% 
+  arrange.(sem_atend) %>% 
+  #Conta as palavras
+  count(tx_codigo, sort = TRUE) %>% 
+  #Cria contagens únicas das palavras por palavras únicas
+  mutate.(tx_codigo = factor(tx_codigo, levels = rev(unique(tx_codigo)))) %>% 
+  ungroup() %>% 
+  slice_max.(order_by = n, n = 10) %>% 
+  rename.(CID10 = tx_codigo) %>% 
+  left_join.(cid10, by = "CID10") %>% 
+  rename.(Descrição = DESCRICAO) %>% 
+  relocate.(Descrição, .before = n)
+})
+#Plota a nuvem de palavras
+renderTable(CIDTopTab(), width = "50%")
+```

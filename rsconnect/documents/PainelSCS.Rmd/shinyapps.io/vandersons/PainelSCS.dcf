@@ -1,0 +1,13 @@
+name: PainelSCS
+title: PainelSCS
+username:
+account: vandersons
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 6876950
+bundleId: 6423080
+url: https://vandersons.shinyapps.io/PainelSCS/
+when: 1666272155.88444
+lastSyncTime: 1666272155.88447
+asMultiple: FALSE
+asStatic: FALSE
