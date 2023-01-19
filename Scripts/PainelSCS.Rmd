@@ -27,6 +27,9 @@ library(tidytext)
 library(stringi)
 #Teste icloud
 ```
+
+## Loading databases
+
 ```{r data, include=FALSE}
 load("../Data/SCS.RData")
 load("../Data/bairrosSCS.RData")
@@ -40,7 +43,7 @@ Column {data-width=190}
 -----------------------------------------------------------------------
 
 ```{r picture, echo = F, fig.cap = "http://itps.org.br", out.width = "200px"}
-knitr::include_graphics("../itps.png")
+knitr::include_graphics("itps.png")
 ```
 <br>
 
@@ -148,11 +151,11 @@ pyramid(SCSagePerc, Clab = "Faixa etária", Llab = "Masculino (%)", Rlab = "Femi
 
 ### Dist. de atendimentos no tempo
 ```{r}
-sem_atual <- epiweek(today())
+sem_atual <- epiweek(max(SCS$dt_atendimento))
 SCSTemp <- SCS %>% 
   filter.(year(dt_atendimento) == 2022) %>% 
   #Alterar o valor subtraído da semana quando chegar o banco total
-  filter.(week(dt_atendimento) <= sem_atual-4) %>%
+  filter.(week(dt_atendimento) <= sem_atual) %>%
   summarise.(n = n(), .by = c(sem_atend, tx_unidade_organizacional)) %>%
   spread(tx_unidade_organizacional, n) %>% 
   #filter.(sem_atend < (sem_atual-5)) %>% 

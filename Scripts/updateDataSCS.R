@@ -7,13 +7,15 @@ library(readr)
 library(geobr)
 library(lubridate)
 library(stringr)
+library(readxl)
 
 ## Setting the working directory, not needed if you open via .rproj
-# setwd(getwd())
+setwd(
+  "~/Desktop/repos/SCS/"
+)
 
 #Abre bases de dados de São Caetano e une em único arquivo
 arquivos <- list.files("Data/Datasets_SCS/", pattern = ".xlsx", full.names = T)
-# setwd("Datasets_SCS/")
 
 ## Carregar CID-10
 cid10 <- read_delim("Data/Datasets_SCS/cid10.csv", delim = ";", 
@@ -100,8 +102,11 @@ SCS <- SCS %>%
   mutate(malaria = if_else(grepl("malária|malari", queixa, ignore.case = T), 1, 0)) %>% 
   mutate(geca = if_else(grepl("geca|gastro|dor abdominal", queixa, ignore.case = T), 1, 0)) %>% 
   ## juntando por bairros
-  inner_join(pop_scs_bairro_estimada, by = "code_neighborhood") %>% 
-  filter(sem_atend <= epiweek(today()))
+  inner_join(pop_scs_bairro_estimada, by = "code_neighborhood")
+
+## Deduplicação
+SCS<-SCS |> 
+  distinct()
 
 #Baixa stopwords em português Brasil
 stopwords <- stopwords <- read.delim(
