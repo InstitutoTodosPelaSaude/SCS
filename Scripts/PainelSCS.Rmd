@@ -153,10 +153,10 @@ pyramid(SCSagePerc, Clab = "Faixa etária", Llab = "Masculino (%)", Rlab = "Femi
 ```{r}
 sem_atual <- epiweek(max(SCS$dt_atendimento))
 SCSTemp <- SCS %>% 
-  filter.(year(dt_atendimento) == 2022) %>% 
+  # filter.(year(dt_atendimento) == 2022) %>% 
   #Alterar o valor subtraído da semana quando chegar o banco total
-  filter.(week(dt_atendimento) <= sem_atual) %>%
-  summarise.(n = n(), .by = c(sem_atend, tx_unidade_organizacional)) %>%
+  # filter.(week(dt_atendimento) <= sem_atual) %>%
+  summarise.(n = n(), .by = c(dt_atendimento, tx_unidade_organizacional)) %>%
   spread(tx_unidade_organizacional, n) %>% 
   #filter.(sem_atend < (sem_atual-5)) %>% 
   arrange.(sem_atend)
@@ -265,10 +265,15 @@ SCSbairro <- SCS %>%
 renderPlot({
   ggplot(data = SCSbairro) +
   geom_sf(aes(fill = TaxaFebre ), size = .15) +
-  scale_fill_gradient(low = "light blue", high = "dark blue", name = "Taxa de febre (por 1.000 hab.)") +
-  geom_sf_text(aes(label = name_neighborhood), colour = "white") +
+  scale_fill_binned(low = "light blue", high = "dark blue", 
+                    name = "Taxa de febre (por 1.000 hab.)") +
+  geom_sf_text(aes(label = name_neighborhood), 
+               colour = "white", 
+               size = 2.5, 
+               check_overlap = T) +
   xlab("") +  ylab("") +
-  theme_classic()
+  theme_minimal() +
+  theme(legend.position = "bottom")
 })
 ```
 
@@ -277,7 +282,7 @@ Febre - Dist. temporal
 
 ### Canal endêmico - febres em S. Caetano do Sul
 ```{r}
-sem_atual <- epiweek(today())
+sem_atual <- epiweek(max(week(SCS$dt_atendimento)))
 SCSfebhist <- SCS %>% 
   filter.(year(dt_atendimento) == 2022) %>% 
   filter.(sem_atend<sem_atual) %>% 
@@ -292,7 +297,7 @@ renderPlot({
   ggplot(SCSfebhist) +
   #geom_ribbon(aes(x = sem_atend, ymin = LowB,ymax=HigB), fill="#4D77BB", alpha=0.5) +
   #geom_line(aes(x=sem_atend, y = FebreMean, colour="Media"), lwd=1.5) +
-  geom_line(aes(x=sem_atend, y = feb, colour="Febre2022"), lwd=1.5) +
+  geom_line(aes(x=sem_atend, y = feb, colour="Febre 2022"), lwd=1.5) +
   scale_colour_manual(values =  cols) +
   theme(legend.position = c(0.95, 0.15),
         legend.justification = c("right", "top")) +
