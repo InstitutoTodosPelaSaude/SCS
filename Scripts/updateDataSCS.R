@@ -10,9 +10,9 @@ library(stringr)
 library(readxl)
 
 ## Setting the working directory, not needed if you open via .rproj
-setwd(
-  "~/Desktop/repos/SCS/"
-)
+# setwd(
+#   "~/Desktop/repos/SCS/"
+# )
 
 #Abre bases de dados de São Caetano e une em único arquivo
 arquivos <- list.files("Data/Datasets_SCS/", pattern = ".xlsx", full.names = T)

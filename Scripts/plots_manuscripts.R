@@ -8,15 +8,24 @@ library(geobr)
 library(lubridate)
 library(stringr)
 library(readxl)
+library(corrplot)
+library(ggplot2)
+library(sf)
+library(pyramid)
+library(tidyverse)
 
 ## Setting the working directory
-setwd("~/Desktop/repos/SCS/")
+# setwd("~/Desktop/repos/SCS/")
 
 ## Loading databases
 load("Data/SCS.RData")
 load("Data/bairrosSCS.RData")
 load("Data/stopwords.RData")
 load("Data/cid10.RData")
+
+scs_pcr<-vroom::vroom("Data/Datasets_SCS/SCS_RT_PCR_by_week.tsv") |> 
+  mutate(epiweek_atend = seq.Date(from = as.Date("2022-01-01"), 
+                                  to = as.Date("2022-09-24"), length.out = 39))
 
 ## No axis
 # Remove plot axis
@@ -191,11 +200,12 @@ plt_incidence <- SCSbairro |>
   ggplot() +
   geom_sf(aes(fill = TaxaFebre), 
           size = .15) +
-  colorspace::scale_fill_binned_sequential(palette = "ag_GrnYl",
+  colorspace::scale_fill_binned_sequential(palette = "OrYel",
                                            n.breaks = 10,
+                                           rev = T,
                                            guide = guide_colorbar(title = "Fever Incidence rate (per 1.000 hab.)",
                                                                   title.position = "bottom",
-                                                                  ticks = F, 
+                                                                  ticks = F,
                                                                   label.position = "top",
                                                                   barwidth = 20)) +
   geom_sf_text(aes(label = name_neighborhood), 
@@ -213,33 +223,51 @@ ggsave(filename = "Outputs/fever_incidence_scs.png",
        height = 9, 
        dpi = 100)
 
-sem_atual <- epiweek(max(week(SCS$dt_atendimento)))
-SCSfebhist <- SCS %>% 
-  filter.(year(dt_atendimento) == 2022) %>% 
-  filter.(sem_atend<sem_atual) %>% 
-  summarise.(feb = sum(febre == 1), .by = sem_atend) %>%
-  arrange.(sem_atend) %>%
-  sapply(function(x) {
-    replace(x, is.na(x) | is.infinite(x), 0)
-  })
+end.of.epiweek <- function(x, end = 6) {
+  offset <- (end - 4) %% 7
+  num.x <- as.numeric(x)
+  return(x - (num.x %% 7) + offset + ifelse(num.x %% 7 > offset, 7, 0))
+}
+
+sem_atual <- max(end.of.epiweek(SCS$dt_atendimento))
+SCSfebhist <- SCS |>  
+  mutate.(epiweek_atend = end.of.epiweek(dt_atendimento)) |> 
+  filter.(year(dt_atendimento) == 2022) |> 
+  filter.(sem_atend <= sem_atual) |>  
+  summarise.(feb = sum(febre == 1), .by = epiweek_atend) |> 
+  arrange.(epiweek_atend)  
+
+# %>%
+#   sapply(function(x) {
+#     replace(x, is.na(x) | is.infinite(x), 0)
+#   })
 
 SCSfebhist <- as.data.frame(SCSfebhist)
-cols <- c(Media = "#4D77BB", Febre2022 = "#FF0066")
+cols <- c("#FF9111", "cyan4")
+
+corr_fever_pcr<-cor(x = SCSfebhist$feb, y = scs_pcr$positive[1:36], use = "everything", method = "pearson")
 
 fever_scs<-ggplot(SCSfebhist) +
-  #geom_ribbon(aes(x = sem_atend, ymin = LowB,ymax=HigB), fill="#4D77BB", alpha=0.5) +
-  #geom_line(aes(x=sem_atend, y = FebreMean, colour="Media"), lwd=1.5) +
-  geom_line(aes(x=sem_atend, y = feb, colour="#FFEA00"), show.legend = F, lwd=1.5) +
+  geom_line(aes(x=epiweek_atend, y = feb, col = "Fever records"), 
+            show.legend = T, lwd=1.1) +
+  geom_line(data = scs_pcr, aes(x = epiweek_atend, y = positive, col = "Positive PCR"), 
+            show.legend = T, lwd = 1.1)+
   theme(legend.position = c(0.95, 0.15),
         legend.justification = c("right", "top")) +
-  theme_classic() +
+  theme_bw() +
+  scale_x_date(date_breaks = "2 weeks", date_labels = "%Y-%b-%d")+
   labs(
     title = "",
     # subtitle = "2022",
     caption = "",
     x = "Epiweek",
-    y = "Counts of Fever relating cases (N)",
-    colour = "Legenda")
+    y = "Counts of cases (N)", color = "")+
+  theme(axis.text.x = element_text(angle = 90, size = 16), 
+        axis.text.y = element_text(size = 16),
+        axis.title = element_text(size = 18),
+        legend.position = "bottom", 
+        legend.text = element_text(size = 18))+
+  scale_color_manual(values = cols)
 fever_scs
 
 ggsave(filename = "Outputs/fever_time_series_scs.png", 
